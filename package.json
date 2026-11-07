@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch --env-file-if-exists=.env src/server.ts",
     "test": "vitest run",
+    "db:setup": "node --env-file-if-exists=.env src/db/setup.ts",
     "typecheck": "tsc"
   },
   "dependencies": {
