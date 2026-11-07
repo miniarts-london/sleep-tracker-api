@@ -1,10 +1,13 @@
 import pg from 'pg';
 
 // The connection string comes only from the environment, never from code.
-const connectionString = process.env.DATABASE_URL;
+// Vercel's database env files often name it POSTGRES_URL instead.
+const connectionString = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
 
 if (!connectionString) {
-  throw new Error('DATABASE_URL is not set. Copy .env.example to .env and fill it in.');
+  throw new Error(
+    'No database connection string. Set DATABASE_URL (or POSTGRES_URL) in .env or .env.local.',
+  );
 }
 
 // Return DATE columns as plain 'YYYY-MM-DD' text. By default pg turns them

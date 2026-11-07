@@ -122,6 +122,38 @@ describe('POST /api/entries', () => {
   });
 });
 
+describe('GET /api/entries', () => {
+  it('returns every entry', async () => {
+    const other = { ...validEntry, user_id: 2, first_name: 'Sam' };
+    query.mockResolvedValueOnce({ rows: [validEntry, other] });
+
+    const res = await request(app).get('/api/entries');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([validEntry, other]);
+  });
+
+  it('returns 200 with an empty list when there are no entries', async () => {
+    query.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app).get('/api/entries');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('sends a database failure to the central error handler as 500', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    query.mockRejectedValueOnce(new Error('connection lost'));
+
+    const res = await request(app).get('/api/entries');
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal server error' });
+    spy.mockRestore();
+  });
+});
+
 describe('GET /api/users/:userId/entries', () => {
   it("returns the user's entries", async () => {
     query.mockResolvedValueOnce({ rows: [validEntry] });

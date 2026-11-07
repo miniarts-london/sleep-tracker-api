@@ -105,6 +105,16 @@ export async function createEntry(req: Request, res: Response) {
   }
 }
 
+// GET /api/entries
+// Every entry for every user, newest first. No user input, so nothing to
+// validate and no query parameters needed.
+export async function listEntries(_req: Request, res: Response) {
+  const result = await pool.query<EntryRow>(
+    `SELECT ${COLUMNS} FROM sleeper ORDER BY date DESC, user_id`,
+  );
+  res.json(result.rows.map(toEntry));
+}
+
 // GET /api/users/:userId/entries
 export async function listUserEntries(req: Request, res: Response) {
   const userId = parseUserId(req.params.userId);

@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --env-file-if-exists=.env src/server.ts",
+    "dev": "node --watch --env-file-if-exists=.env --env-file-if-exists=.env.local src/server.ts",
     "test": "vitest run",
-    "db:setup": "node --env-file-if-exists=.env src/db/setup.ts",
+    "db:setup": "node --env-file-if-exists=.env --env-file-if-exists=.env.local src/db/setup.ts",
     "typecheck": "tsc"
   },
   "dependencies": {
