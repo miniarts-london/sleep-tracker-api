@@ -10,7 +10,7 @@ vi.mock('../src/db/pool.ts', () => ({ pool: { query: vi.fn() } }));
 const query = pool.query as unknown as Mock;
 
 const validEntry = {
-  user_id: 1,
+  user_id: 'kaori',
   first_name: 'Kaori',
   last_name: 'Nishimura',
   sleep_time: 7.5,
@@ -41,7 +41,7 @@ describe('POST /api/entries', () => {
     const [sql, params] = query.mock.calls[1];
     expect(sql).toContain('$1');
     expect(sql).not.toContain('Kaori');
-    expect(params).toEqual([1, 'Kaori', 'Nishimura', 7.5, '2026-11-06']);
+    expect(params).toEqual(['kaori', 'Kaori', 'Nishimura', 7.5, '2026-11-06']);
   });
 
   it('trims spaces around names', async () => {
@@ -65,9 +65,11 @@ describe('POST /api/entries', () => {
   });
 
   it.each([
-    ['user_id is 0', { user_id: 0 }],
-    ['user_id is text', { user_id: '1' }],
-    ['user_id is a decimal', { user_id: 1.5 }],
+    ['user_id is a number', { user_id: 1 }],
+    ['user_id is empty', { user_id: '' }],
+    ['user_id has a space', { user_id: 'kaori n' }],
+    ['user_id has a slash', { user_id: 'a/b' }],
+    ['user_id is too long', { user_id: 'x'.repeat(51) }],
     ['first_name is blank', { first_name: '   ' }],
     ['last_name is too long', { last_name: 'x'.repeat(51) }],
     ['sleep_time is below 1', { sleep_time: 0.5 }],
@@ -124,7 +126,7 @@ describe('POST /api/entries', () => {
 
 describe('GET /api/entries', () => {
   it('returns every entry', async () => {
-    const other = { ...validEntry, user_id: 2, first_name: 'Sam' };
+    const other = { ...validEntry, user_id: 'sam', first_name: 'Sam' };
     query.mockResolvedValueOnce({ rows: [validEntry, other] });
 
     const res = await request(app).get('/api/entries');
@@ -158,17 +160,26 @@ describe('GET /api/users/:userId/entries', () => {
   it("returns the user's entries", async () => {
     query.mockResolvedValueOnce({ rows: [validEntry] });
 
-    const res = await request(app).get('/api/users/1/entries');
+    const res = await request(app).get('/api/users/kaori/entries');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([validEntry]);
-    expect(query.mock.calls[0][1]).toEqual([1]);
+    expect(query.mock.calls[0][1]).toEqual(['kaori']);
+  });
+
+  it('accepts ids with numbers, - and _', async () => {
+    query.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app).get('/api/users/user_42-b/entries');
+
+    expect(res.status).toBe(200);
+    expect(query.mock.calls[0][1]).toEqual(['user_42-b']);
   });
 
   it('turns a numeric sleep_time string from Postgres into a number', async () => {
     query.mockResolvedValueOnce({ rows: [{ ...validEntry, sleep_time: '7.5' }] });
 
-    const res = await request(app).get('/api/users/1/entries');
+    const res = await request(app).get('/api/users/kaori/entries');
 
     expect(res.body[0].sleep_time).toBe(7.5);
   });
@@ -176,13 +187,14 @@ describe('GET /api/users/:userId/entries', () => {
   it('returns 200 with an empty list when the user has no entries', async () => {
     query.mockResolvedValueOnce({ rows: [] });
 
-    const res = await request(app).get('/api/users/99/entries');
+    const res = await request(app).get('/api/users/nobody/entries');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
   });
 
-  it.each(['abc', '0', '-1', '1.5'])('returns 400 for userId %s', async (userId) => {
+  // %20 is a space and %2F a slash, as a browser would encode them in a URL.
+  it.each(['a%20b', 'a%2Fb', 'a.b', 'x'.repeat(51)])('returns 400 for userId %s', async (userId) => {
     const res = await request(app).get(`/api/users/${userId}/entries`);
 
     expect(res.status).toBe(400);
@@ -194,30 +206,30 @@ describe('GET /api/users/:userId/entries/:date', () => {
   it('returns one entry', async () => {
     query.mockResolvedValueOnce({ rows: [validEntry] });
 
-    const res = await request(app).get('/api/users/1/entries/2026-11-06');
+    const res = await request(app).get('/api/users/kaori/entries/2026-11-06');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(validEntry);
-    expect(query.mock.calls[0][1]).toEqual([1, '2026-11-06']);
+    expect(query.mock.calls[0][1]).toEqual(['kaori', '2026-11-06']);
   });
 
   it('returns 404 when there is no entry for that date', async () => {
     query.mockResolvedValueOnce({ rows: [] });
 
-    const res = await request(app).get('/api/users/1/entries/2026-01-01');
+    const res = await request(app).get('/api/users/kaori/entries/2026-01-01');
 
     expect(res.status).toBe(404);
   });
 
   it('returns 400 for an invalid date', async () => {
-    const res = await request(app).get('/api/users/1/entries/2026-13-01');
+    const res = await request(app).get('/api/users/kaori/entries/2026-13-01');
 
     expect(res.status).toBe(400);
     expect(query).not.toHaveBeenCalled();
   });
 
   it('returns 400 for an invalid userId', async () => {
-    const res = await request(app).get('/api/users/abc/entries/2026-11-06');
+    const res = await request(app).get('/api/users/a%20b/entries/2026-11-06');
 
     expect(res.status).toBe(400);
   });

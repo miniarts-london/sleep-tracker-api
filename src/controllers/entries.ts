@@ -6,7 +6,7 @@ import { pool } from '../db/pool.ts';
 const COLUMNS = 'user_id, first_name, last_name, sleep_time, date';
 
 type EntryRow = {
-  user_id: number;
+  user_id: string;
   first_name: string;
   last_name: string;
   sleep_time: number | string; // a string if the column type is numeric
@@ -19,17 +19,15 @@ function toEntry(row: EntryRow) {
 
 // ---------- validation helpers ----------
 
-const MAX_INT = 2_147_483_647; // largest value a Postgres integer can hold
+// user_id is text, e.g. 'kaori' or 'user-42'. Only letters, numbers, - and _
+// because it also appears in URLs (/api/users/kaori/entries), where spaces
+// or slashes would break things. The same rule is in schema.sql.
+const USER_ID = /^[A-Za-z0-9_-]{1,50}$/;
+const USER_ID_ERROR = 'user_id must be 1 to 50 letters, numbers, - or _';
 
-function isPositiveInt(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) > 0 && (value as number) <= MAX_INT;
-}
-
-// Path params always arrive as text, e.g. '42'.
-function parseUserId(value: unknown): number | null {
-  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return null;
-  const id = Number(value);
-  return id <= MAX_INT ? id : null;
+// Works for both the JSON body and the URL path param.
+function isUserId(value: unknown): value is string {
+  return typeof value === 'string' && USER_ID.test(value);
 }
 
 // A real calendar date in YYYY-MM-DD format. '2026-02-30' fails because
@@ -48,7 +46,7 @@ function validateEntry(body: unknown): string[] {
   const b = (body ?? {}) as Record<string, unknown>;
   const errors: string[] = [];
 
-  if (!isPositiveInt(b.user_id)) errors.push('user_id must be a positive whole number');
+  if (!isUserId(b.user_id)) errors.push(USER_ID_ERROR);
   if (!isName(b.first_name)) errors.push('first_name must be text, 1 to 50 characters');
   if (!isName(b.last_name)) errors.push('last_name must be text, 1 to 50 characters');
 
@@ -110,16 +108,18 @@ export async function createEntry(req: Request, res: Response) {
 // validate and no query parameters needed.
 export async function listEntries(_req: Request, res: Response) {
   const result = await pool.query<EntryRow>(
-    `SELECT ${COLUMNS} FROM sleeper ORDER BY date DESC, user_id`,
+    `SELECT user_id, first_name, last_name, COUNT(user_id) FROM public."sleeper" 
+    GROUP BY user_id, first_name, last_name
+    ORDER BY user_id`
   );
   res.json(result.rows.map(toEntry));
 }
 
 // GET /api/users/:userId/entries
 export async function listUserEntries(req: Request, res: Response) {
-  const userId = parseUserId(req.params.userId);
-  if (userId === null) {
-    res.status(400).json({ error: 'userId must be a positive whole number' });
+  const { userId } = req.params;
+  if (!isUserId(userId)) {
+    res.status(400).json({ error: USER_ID_ERROR });
     return;
   }
 
@@ -133,11 +133,10 @@ export async function listUserEntries(req: Request, res: Response) {
 
 // GET /api/users/:userId/entries/:date
 export async function getUserEntry(req: Request, res: Response) {
-  const userId = parseUserId(req.params.userId);
-  const { date } = req.params;
+  const { userId, date } = req.params;
 
   const errors: string[] = [];
-  if (userId === null) errors.push('userId must be a positive whole number');
+  if (!isUserId(userId)) errors.push(USER_ID_ERROR);
   if (!isValidDate(date)) errors.push('date must be a real date in YYYY-MM-DD format');
   if (errors.length > 0) {
     res.status(400).json({ error: 'Invalid request', details: errors });

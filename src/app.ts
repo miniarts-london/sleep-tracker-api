@@ -1,8 +1,13 @@
 import express from 'express';
+import { cors } from './middleware/cors.ts';
 import { errorHandler } from './middleware/errorHandler.ts';
 import apiRouter from './routes/index.ts';
 
 const app = express();
+
+// 0. CORS headers first, so every response (even errors) carries them
+// and the browser can read it.
+app.use(cors);
 
 // 1. Turn JSON request bodies into objects on req.body.
 app.use(express.json());

@@ -2,8 +2,9 @@
 CREATE TABLE IF NOT EXISTS sleeper (
   -- The entry's own id, created by the database: 1, 2, 3, ...
   id          integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  -- The person's id, sent by the client. One person has many entries.
-  user_id     integer NOT NULL CHECK (user_id > 0),
+  -- The person's id, sent by the client as text, e.g. 'kaori'.
+  -- One person has many entries. Same rule as the API's validation.
+  user_id     text    NOT NULL CHECK (user_id ~ '^[A-Za-z0-9_-]{1,50}$'),
   first_name  text    NOT NULL,
   last_name   text    NOT NULL,
   -- Hours slept. 'real' comes back to Node as a number; halves like 7.5 are
