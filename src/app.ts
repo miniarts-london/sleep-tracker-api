@@ -14,7 +14,7 @@ app.use(express.json());
 
 // 2. Health check at the root: it's about the server, not the API data.
 app.get('/health', (_req, res) => {
-  res.json({ status: 'okay' });
+  res.json({ status: 'ok' });
 });
 
 // 3. All API routes, mounted under /api (e.g. /api/entries).
