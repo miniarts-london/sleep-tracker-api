@@ -7,6 +7,24 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+
+    # DB: a throwaway Postgres that starts before steps
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-retries 5
+
+    # DB: env vars available to every step in this job
+    env:
+      DATABASE_URL: postgres://postgres:test@localhost:5432/postgres
+
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -16,3 +34,6 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # DB: prove the schema and migration work on an empty database
+      - run: npm run db:setup
+      - run: psql "$DATABASE_URL" -f src/db/migrations/001-user-id-text.sql
