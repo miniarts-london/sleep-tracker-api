@@ -16,6 +16,15 @@ describe('CORS', () => {
     expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5173');
   });
 
+  it('allows the deployed front-end without any setting', async () => {
+    const res = await request(app)
+      .options('/api/entries')
+      .set('Origin', 'https://sleep-tracker-ruddy.vercel.app')
+      .set('Access-Control-Request-Method', 'POST');
+
+    expect(res.headers['access-control-allow-origin']).toBe('https://sleep-tracker-ruddy.vercel.app');
+  });
+
   it('allows an origin listed in CORS_ORIGINS', async () => {
     vi.stubEnv('CORS_ORIGINS', 'https://one.example, https://two.example/');
 
