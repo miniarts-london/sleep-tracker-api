@@ -4,19 +4,24 @@ import type { RequestHandler } from 'express';
 // address (origin) unless the server says that origin is allowed. curl and
 // Postman don't check this; only browsers do.
 //
-// Allowed origins come from CORS_ORIGINS, a comma-separated list, e.g.
+// Always allowed: any http://localhost:<port> (local front-end dev) and the
+// sites in FRONTEND_ORIGINS below. More can be added without a code change
+// through CORS_ORIGINS, a comma-separated list, e.g.
 //   CORS_ORIGINS=https://my-app.vercel.app,https://example.com
-// Any http://localhost:<port> is always allowed, for local front-end dev.
 
 const LOCALHOST = /^http:\/\/localhost(:\d+)?$/;
 
+// Our own front-end. A public address, not a secret, so it can live in code.
+const FRONTEND_ORIGINS = ['https://sleep-tracker-ruddy.vercel.app'];
+
 function isAllowed(origin: string): boolean {
   if (LOCALHOST.test(origin)) return true;
-  const allowed = (process.env.CORS_ORIGINS ?? '')
+  if (FRONTEND_ORIGINS.includes(origin)) return true;
+  const extra = (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((o) => o.trim().replace(/\/$/, '')) // ignore a trailing slash
     .filter(Boolean);
-  return allowed.includes(origin);
+  return extra.includes(origin);
 }
 
 export const cors: RequestHandler = (req, res, next) => {

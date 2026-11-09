@@ -99,7 +99,7 @@ Values go in `.env` or `.env.local`; `.env.local` wins if both set the same name
 | `DATABASE_URL` | Postgres connection string. |
 | `POSTGRES_URL` | Used if `DATABASE_URL` isn't set. This is the name Vercel's Neon integration uses. |
 | `PORT` | Port to listen on. Defaults to `3001`. |
-| `CORS_ORIGINS` | Front-end sites allowed to call the API from a browser, separated by commas. For example `https://my-app.vercel.app`. Any `http://localhost:<port>` is always allowed. |
+| `CORS_ORIGINS` | Extra front-end sites allowed to call the API from a browser, separated by commas. For example `https://my-app.vercel.app`. Any `http://localhost:<port>` and the deployed front-end (`https://sleep-tracker-ruddy.vercel.app`, set in `src/middleware/cors.ts`) are always allowed. |
 
 The server reads these only when it starts. After changing one, stop the server with Ctrl+C and run `npm run dev` again.
 
@@ -152,7 +152,7 @@ For the hosted database, paste the file into Neon's SQL Editor and run it.
 Vercel detects the Express app exported from `src/app.ts` and deploys it whenever you push to GitHub.
 
 1. **Connect a database.** In Vercel, go to Storage, then Create Database, choose Neon (Postgres) and connect it to this project. This sets `POSTGRES_URL`.
-2. **Allow your front-end.** Add `CORS_ORIGINS` under Settings, then Environment Variables. Use the front-end's exact address, such as `https://my-app.vercel.app`.
+2. **Allow your front-end.** `https://sleep-tracker-ruddy.vercel.app` is already allowed in `src/middleware/cors.ts`. For any other site, add `CORS_ORIGINS` under Settings, then Environment Variables, using the site's exact address.
 3. **Redeploy.** Changes to environment variables only apply to new deployments.
 4. **Create the table.** Paste `src/db/schema.sql` into Neon's SQL Editor and run it, plus any migrations that the database hasn't had yet.
 
@@ -163,6 +163,6 @@ Vercel detects the Express app exported from `src/app.ts` and deploys it wheneve
 | `Internal server error` | Look in the terminal running `npm run dev`, or in Vercel's Logs; the real error is printed there. |
 | `EADDRINUSE` when starting | Another server is already using the port. Find it with `lsof -i :3001`, then `kill <PID>`. |
 | A changed `.env` value has no effect | Restart the server. It reads environment files only at startup. |
-| CORS error in the browser | The front-end's address isn't in `CORS_ORIGINS`, or the API hasn't been redeployed since you added it. |
+| CORS error in the browser | The front-end's address isn't allowed: it isn't in `src/middleware/cors.ts` or `CORS_ORIGINS`, or the API hasn't been redeployed since you added it. CORS only applies to requests the browser makes. A fetch from a server, or from `curl`, never hits it. |
 | `FUNCTION_INVOCATION_FAILED` on Vercel | The app crashed at startup. This is usually because no database connection string is set. |
 | A process won't stop | It may be paused (Ctrl+Z), not stopped. Type `fg` to resume it, then press Ctrl+C. |
