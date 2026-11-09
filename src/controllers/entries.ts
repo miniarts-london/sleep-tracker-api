@@ -19,11 +19,27 @@ function toEntry(row: EntryRow) {
 
 // ---------- validation helpers ----------
 
+// One validation problem. fieldName matches the name the client used
+// (a JSON key like 'user_id', or a URL part like 'userId'), so a front-end
+// can show each message next to the right input.
+type FieldError = { fieldName: string; message: string };
+
+function fieldError(fieldName: string, rule: string): FieldError {
+  return { fieldName, message: `${fieldName} ${rule}` };
+}
+
+// The rules, without a field name, so body and URL errors can share them.
+const RULES = {
+  userId: 'must be 1 to 50 letters, numbers, - or _',
+  name: 'must be text, 1 to 50 characters',
+  sleepTime: 'must be a number from 1 to 24, in steps of 0.5',
+  date: 'must be a real date in YYYY-MM-DD format',
+};
+
 // user_id is text, e.g. 'kaori' or 'user-42'. Only letters, numbers, - and _
 // because it also appears in URLs (/api/users/kaori/entries), where spaces
 // or slashes would break things. The same rule is in schema.sql.
 const USER_ID = /^[A-Za-z0-9_-]{1,50}$/;
-const USER_ID_ERROR = 'user_id must be 1 to 50 letters, numbers, - or _';
 
 // Works for both the JSON body and the URL path param.
 function isUserId(value: unknown): value is string {
@@ -42,23 +58,42 @@ function isName(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length >= 1 && value.trim().length <= 50;
 }
 
-function validateEntry(body: unknown): string[] {
+function validateEntry(body: unknown): FieldError[] {
   const b = (body ?? {}) as Record<string, unknown>;
-  const errors: string[] = [];
+  const errors: FieldError[] = [];
 
-  if (!isUserId(b.user_id)) errors.push(USER_ID_ERROR);
-  if (!isName(b.first_name)) errors.push('first_name must be text, 1 to 50 characters');
-  if (!isName(b.last_name)) errors.push('last_name must be text, 1 to 50 characters');
+  if (!isUserId(b.user_id)) errors.push(fieldError('user_id', RULES.userId));
+  if (!isName(b.first_name)) errors.push(fieldError('first_name', RULES.name));
+  if (!isName(b.last_name)) errors.push(fieldError('last_name', RULES.name));
 
   const s = b.sleep_time;
   if (typeof s !== 'number' || s < 1 || s > 24 || !Number.isInteger(s * 2)) {
-    errors.push('sleep_time must be a number from 1 to 24, in steps of 0.5');
+    errors.push(fieldError('sleep_time', RULES.sleepTime));
   }
 
-  if (!isValidDate(b.date)) errors.push('date must be a real date in YYYY-MM-DD format');
+  if (!isValidDate(b.date)) errors.push(fieldError('date', RULES.date));
 
   return errors;
 }
+
+// ---------- response helpers ----------
+// Submissions and validation failures share one shape:
+//   { success: true,  details: null }
+//   { success: false, details: [{ fieldName, message }, ...] }
+
+function succeed(res: Response, status: number) {
+  res.status(status).json({ success: true, details: null });
+}
+
+function fail(res: Response, status: number, details: FieldError[]) {
+  res.status(status).json({ success: false, details });
+}
+
+// A duplicate is reported against 'date': changing the date fixes it.
+const DUPLICATE: FieldError = {
+  fieldName: 'date',
+  message: 'An entry for this user and date already exists',
+};
 
 // ---------- handlers ----------
 // These are async. In Express 5, if a query throws, the error goes to the
@@ -68,7 +103,7 @@ function validateEntry(body: unknown): string[] {
 export async function createEntry(req: Request, res: Response) {
   const errors = validateEntry(req.body);
   if (errors.length > 0) {
-    res.status(400).json({ error: 'Invalid entry', details: errors });
+    fail(res, 400, errors);
     return;
   }
 
@@ -80,23 +115,22 @@ export async function createEntry(req: Request, res: Response) {
     [user_id, date],
   );
   if (existing.rows.length > 0) {
-    res.status(409).json({ error: 'An entry for this user and date already exists' });
+    fail(res, 409, [DUPLICATE]);
     return;
   }
 
   try {
-    const result = await pool.query<EntryRow>(
+    await pool.query(
       `INSERT INTO sleeper (user_id, first_name, last_name, sleep_time, date)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING ${COLUMNS}`,
+       VALUES ($1, $2, $3, $4, $5)`,
       [user_id, first_name.trim(), last_name.trim(), sleep_time, date],
     );
-    res.status(201).json(toEntry(result.rows[0]));
+    succeed(res, 201);
   } catch (err) {
     // 23505 = Postgres "unique violation": two identical requests arrived at
     // the same moment and the table's UNIQUE rule caught the second one.
     if ((err as { code?: string }).code === '23505') {
-      res.status(409).json({ error: 'An entry for this user and date already exists' });
+      fail(res, 409, [DUPLICATE]);
       return;
     }
     throw err; // anything else goes to the central error handler
@@ -119,7 +153,7 @@ export async function listEntries(_req: Request, res: Response) {
 export async function listUserEntries(req: Request, res: Response) {
   const { userId } = req.params;
   if (!isUserId(userId)) {
-    res.status(400).json({ error: USER_ID_ERROR });
+    fail(res, 400, [fieldError('userId', RULES.userId)]);
     return;
   }
 
@@ -135,11 +169,11 @@ export async function listUserEntries(req: Request, res: Response) {
 export async function getUserEntry(req: Request, res: Response) {
   const { userId, date } = req.params;
 
-  const errors: string[] = [];
-  if (!isUserId(userId)) errors.push(USER_ID_ERROR);
-  if (!isValidDate(date)) errors.push('date must be a real date in YYYY-MM-DD format');
+  const errors: FieldError[] = [];
+  if (!isUserId(userId)) errors.push(fieldError('userId', RULES.userId));
+  if (!isValidDate(date)) errors.push(fieldError('date', RULES.date));
   if (errors.length > 0) {
-    res.status(400).json({ error: 'Invalid request', details: errors });
+    fail(res, 400, errors);
     return;
   }
 

@@ -37,17 +37,31 @@ Each user can have only one entry per date.
 | Status | When |
 |---|---|
 | `200` | Success. An empty list (`[]`) is still a success. |
-| `201` | The entry was created. The body is the saved entry. |
+| `201` | The entry was created. |
 | `400` | The input is invalid. `details` lists every problem. |
 | `404` | No entry for that user and date, or an unknown URL. |
 | `409` | That user already has an entry for that date. |
 | `500` | Something failed on the server. The real error is logged on the server, never sent to the client. |
 
-A `400` looks like this:
+Adding an entry (`201`, `400` or `409`) and any invalid URL (`400`) return this shape:
 
 ```json
-{ "error": "Invalid entry", "details": ["sleep_time must be a number from 1 to 24, in steps of 0.5"] }
+{ "success": true, "details": null }
 ```
+
+```json
+{
+  "success": false,
+  "details": [
+    { "fieldName": "user_id", "message": "user_id must be 1 to 50 letters, numbers, - or _" },
+    { "fieldName": "sleep_time", "message": "sleep_time must be a number from 1 to 24, in steps of 0.5" }
+  ]
+}
+```
+
+`details` has one item for every invalid field. `fieldName` is the JSON key for body fields (such as `user_id`) or the URL part for URL fields (`userId`, `date`). A duplicate entry (`409`) is reported against `date`.
+
+Successful GET requests return the data itself: a list, or a single entry. Other errors (`404`, `500`, or invalid JSON) return `{ "error": "..." }`.
 
 ## Running it locally
 

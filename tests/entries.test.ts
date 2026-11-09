@@ -22,15 +22,15 @@ beforeEach(() => {
 });
 
 describe('POST /api/entries', () => {
-  it('creates an entry and returns 201', async () => {
+  it('creates an entry and returns 201 with success: true', async () => {
     query
       .mockResolvedValueOnce({ rows: [] }) // duplicate check: none found
-      .mockResolvedValueOnce({ rows: [validEntry] }); // the INSERT
+      .mockResolvedValueOnce({ rows: [] }); // the INSERT
 
     const res = await request(app).post('/api/entries').send(validEntry);
 
     expect(res.status).toBe(201);
-    expect(res.body).toEqual(validEntry);
+    expect(res.body).toEqual({ success: true, details: null });
   });
 
   it('sends values as query parameters, never inside the SQL', async () => {
@@ -60,8 +60,30 @@ describe('POST /api/entries', () => {
     const res = await request(app).post('/api/entries').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.details).toHaveLength(5);
+    expect(res.body.success).toBe(false);
+    // One { fieldName, message } per field, in the order they're checked.
+    expect(res.body.details.map((e: { fieldName: string }) => e.fieldName)).toEqual([
+      'user_id',
+      'first_name',
+      'last_name',
+      'sleep_time',
+      'date',
+    ]);
     expect(query).not.toHaveBeenCalled(); // never reached the database
+  });
+
+  it('gives each error a fieldName and a readable message', async () => {
+    const res = await request(app).post('/api/entries').send({ ...validEntry, sleep_time: 30 });
+
+    expect(res.body).toEqual({
+      success: false,
+      details: [
+        {
+          fieldName: 'sleep_time',
+          message: 'sleep_time must be a number from 1 to 24, in steps of 0.5',
+        },
+      ],
+    });
   });
 
   it.each([
@@ -82,6 +104,10 @@ describe('POST /api/entries', () => {
     const res = await request(app).post('/api/entries').send({ ...validEntry, ...change });
 
     expect(res.status).toBe(400);
+    // Only the changed field is reported, under its own name.
+    expect(res.body.success).toBe(false);
+    expect(res.body.details).toHaveLength(1);
+    expect(res.body.details[0].fieldName).toBe(Object.keys(change)[0]);
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -99,6 +125,10 @@ describe('POST /api/entries', () => {
     const res = await request(app).post('/api/entries').send(validEntry);
 
     expect(res.status).toBe(409);
+    expect(res.body).toEqual({
+      success: false,
+      details: [{ fieldName: 'date', message: 'An entry for this user and date already exists' }],
+    });
     expect(query).toHaveBeenCalledTimes(1); // the INSERT never ran
   });
 
@@ -110,6 +140,8 @@ describe('POST /api/entries', () => {
     const res = await request(app).post('/api/entries').send(validEntry);
 
     expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.details[0].fieldName).toBe('date');
   });
 
   it('returns 500 (via the error handler) when the database fails', async () => {
@@ -198,6 +230,10 @@ describe('GET /api/users/:userId/entries', () => {
     const res = await request(app).get(`/api/users/${userId}/entries`);
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      success: false,
+      details: [{ fieldName: 'userId', message: 'userId must be 1 to 50 letters, numbers, - or _' }],
+    });
     expect(query).not.toHaveBeenCalled();
   });
 });
@@ -225,6 +261,10 @@ describe('GET /api/users/:userId/entries/:date', () => {
     const res = await request(app).get('/api/users/kaori/entries/2026-13-01');
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      success: false,
+      details: [{ fieldName: 'date', message: 'date must be a real date in YYYY-MM-DD format' }],
+    });
     expect(query).not.toHaveBeenCalled();
   });
 
