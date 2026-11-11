@@ -157,14 +157,22 @@ describe('POST /api/entries', () => {
 });
 
 describe('GET /api/entries', () => {
-  it('returns every entry', async () => {
-    const other = { ...validEntry, user_id: 'sam', first_name: 'Sam' };
-    query.mockResolvedValueOnce({ rows: [validEntry, other] });
+  it('returns each user with their entry count as a number', async () => {
+    // Shaped like the real query's rows: Postgres sends COUNT as text.
+    query.mockResolvedValueOnce({
+      rows: [
+        { user_id: 'kaori', first_name: 'Kaori', last_name: 'Nishimura', count: '3' },
+        { user_id: 'sam', first_name: 'Sam', last_name: 'Nishimura', count: '1' },
+      ],
+    });
 
     const res = await request(app).get('/api/entries');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([validEntry, other]);
+    expect(res.body).toEqual([
+      { user_id: 'kaori', first_name: 'Kaori', last_name: 'Nishimura', count: 3 },
+      { user_id: 'sam', first_name: 'Sam', last_name: 'Nishimura', count: 1 },
+    ]);
   });
 
   it('returns 200 with an empty list when there are no entries', async () => {

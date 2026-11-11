@@ -17,6 +17,18 @@ function toEntry(row: EntryRow) {
   return { ...row, sleep_time: Number(row.sleep_time) };
 }
 
+// One row from GET /api/entries: a user and how many entries they have.
+type UserSummaryRow = {
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  count: string; // Postgres sends COUNT as text, since it can exceed JS numbers
+};
+
+function toUserSummary(row: UserSummaryRow) {
+  return { ...row, count: Number(row.count) };
+}
+
 // ---------- validation helpers ----------
 
 // One validation problem. fieldName matches the name the client used
@@ -138,15 +150,15 @@ export async function createEntry(req: Request, res: Response) {
 }
 
 // GET /api/entries
-// Every entry for every user, newest first. No user input, so nothing to
-// validate and no query parameters needed.
+// One row per user (id and name) with how many entries they have, sorted by
+// user_id. No user input, so nothing to validate and no query parameters.
 export async function listEntries(_req: Request, res: Response) {
-  const result = await pool.query<EntryRow>(
+  const result = await pool.query<UserSummaryRow>(
     `SELECT user_id, first_name, last_name, COUNT(user_id) FROM public."sleeper" 
     GROUP BY user_id, first_name, last_name
     ORDER BY user_id`
   );
-  res.json(result.rows.map(toEntry));
+  res.json(result.rows.map(toUserSummary));
 }
 
 // GET /api/users/:userId/entries

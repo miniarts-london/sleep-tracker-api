@@ -15,3 +15,17 @@ CREATE TABLE IF NOT EXISTS sleeper (
   -- No duplicates: one entry per person per date.
   UNIQUE (user_id, date)
 );
+
+-- People who can log in. A user's username is the user_id on their entries.
+CREATE TABLE IF NOT EXISTS users (
+  id             integer     GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  -- Same rule as sleeper.user_id. UNIQUE: no two people share a username.
+  username       text        NOT NULL UNIQUE CHECK (username ~ '^[A-Za-z0-9_-]{1,50}$'),
+  -- Never the password itself: a one-way scrambled version (scrypt) plus
+  -- its random salt, so a leaked table doesn't reveal anyone's password.
+  password_hash  text        NOT NULL,
+  first_name     text        NOT NULL,
+  last_name      text        NOT NULL,
+  -- Filled in by the database when the row is created.
+  created_at     timestamptz NOT NULL DEFAULT now()
+);

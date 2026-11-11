@@ -24,3 +24,8 @@ Stack: Node, Express, TypeScript (ES modules), PostgreSQL (pg), Vitest + superte
 ## Commands
 - `npm run dev` start locally
 - `npm test` run tests
+
+## Rules
+- Never commit .env or secrets
+- Ask before adding a new npm package
+- Explain new Node/Express concepts briefly when introducing them (I'm learning Express)
