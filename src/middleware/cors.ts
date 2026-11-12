@@ -33,7 +33,9 @@ export const cors: RequestHandler = (req, res, next) => {
   if (origin && isAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // Authorization carries the login token. Browsers only let a page send
+    // headers that are listed here.
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
 
   // The "preflight": before a POST with JSON, the browser sends OPTIONS to
