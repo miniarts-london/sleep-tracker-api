@@ -51,5 +51,6 @@ describe('CORS', () => {
     expect(res.status).toBe(204);
     expect(res.headers['access-control-allow-methods']).toContain('POST');
     expect(res.headers['access-control-allow-headers']).toContain('Content-Type');
+    expect(res.headers['access-control-allow-headers']).toContain('Authorization'); // for the login token
   });
 });

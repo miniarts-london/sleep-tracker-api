@@ -1,5 +1,16 @@
 import type { Request, Response } from 'express';
 import { pool } from '../db/pool.ts';
+import { currentUsername } from '../middleware/requireAuth.ts';
+import {
+  type FieldError,
+  RULES,
+  fail,
+  fieldError,
+  isName,
+  isUserId,
+  isValidDate,
+  succeed,
+} from './validation.ts';
 
 // The columns we read back. We list them by name rather than SELECT *,
 // so the response shape doesn't change if the table gains columns later.
@@ -29,52 +40,11 @@ function toUserSummary(row: UserSummaryRow) {
   return { ...row, count: Number(row.count) };
 }
 
-// ---------- validation helpers ----------
-
-// One validation problem. fieldName matches the name the client used
-// (a JSON key like 'user_id', or a URL part like 'userId'), so a front-end
-// can show each message next to the right input.
-type FieldError = { fieldName: string; message: string };
-
-function fieldError(fieldName: string, rule: string): FieldError {
-  return { fieldName, message: `${fieldName} ${rule}` };
-}
-
-// The rules, without a field name, so body and URL errors can share them.
-const RULES = {
-  userId: 'must be 1 to 50 letters, numbers, - or _',
-  name: 'must be text, 1 to 50 characters',
-  sleepTime: 'must be a number from 1 to 24, in steps of 0.5',
-  date: 'must be a real date in YYYY-MM-DD format',
-};
-
-// user_id is text, e.g. 'kaori' or 'user-42'. Only letters, numbers, - and _
-// because it also appears in URLs (/api/users/kaori/entries), where spaces
-// or slashes would break things. The same rule is in schema.sql.
-const USER_ID = /^[A-Za-z0-9_-]{1,50}$/;
-
-// Works for both the JSON body and the URL path param.
-function isUserId(value: unknown): value is string {
-  return typeof value === 'string' && USER_ID.test(value);
-}
-
-// A real calendar date in YYYY-MM-DD format. '2026-02-30' fails because
-// JavaScript rolls it over to March, so it no longer matches what was sent.
-function isValidDate(value: unknown): value is string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
-}
-
-function isName(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length >= 1 && value.trim().length <= 50;
-}
-
+// No user_id here: it comes from the login token, not the body.
 function validateEntry(body: unknown): FieldError[] {
   const b = (body ?? {}) as Record<string, unknown>;
   const errors: FieldError[] = [];
 
-  if (!isUserId(b.user_id)) errors.push(fieldError('user_id', RULES.userId));
   if (!isName(b.first_name)) errors.push(fieldError('first_name', RULES.name));
   if (!isName(b.last_name)) errors.push(fieldError('last_name', RULES.name));
 
@@ -88,30 +58,29 @@ function validateEntry(body: unknown): FieldError[] {
   return errors;
 }
 
-// ---------- response helpers ----------
-// Submissions and validation failures share one shape:
-//   { success: true,  details: null }
-//   { success: false, details: [{ fieldName, message }, ...] }
-
-function succeed(res: Response, status: number) {
-  res.status(status).json({ success: true, details: null });
-}
-
-function fail(res: Response, status: number, details: FieldError[]) {
-  res.status(status).json({ success: false, details });
-}
-
 // A duplicate is reported against 'date': changing the date fixes it.
 const DUPLICATE: FieldError = {
   fieldName: 'date',
   message: 'An entry for this user and date already exists',
 };
 
+// 403 = "we know who you are, but this isn't yours". (401 means "we don't
+// know who you are", and requireAuth handles that before we get here.)
+// Returns true if it sent the 403, so the handler should stop.
+function forbidOtherUsers(res: Response, userId: string): boolean {
+  if (userId === currentUsername(res)) return false;
+  res.status(403).json({ error: 'You can only view your own entries' });
+  return true;
+}
+
 // ---------- handlers ----------
 // These are async. In Express 5, if a query throws, the error goes to the
 // central error handler automatically, so there's no try/catch for that.
+// All of them sit behind requireAuth (see routes/entries.ts).
 
 // POST /api/entries
+// The entry always belongs to the logged-in user. Any user_id in the body is
+// ignored, so nobody can log sleep under someone else's name.
 export async function createEntry(req: Request, res: Response) {
   const errors = validateEntry(req.body);
   if (errors.length > 0) {
@@ -119,7 +88,8 @@ export async function createEntry(req: Request, res: Response) {
     return;
   }
 
-  const { user_id, first_name, last_name, sleep_time, date } = req.body;
+  const user_id = currentUsername(res);
+  const { first_name, last_name, sleep_time, date } = req.body;
 
   // No duplicates: one entry per person per date.
   const existing = await pool.query(
@@ -168,6 +138,7 @@ export async function listUserEntries(req: Request, res: Response) {
     fail(res, 400, [fieldError('userId', RULES.userId)]);
     return;
   }
+  if (forbidOtherUsers(res, userId)) return;
 
   const result = await pool.query<EntryRow>(
     `SELECT ${COLUMNS} FROM sleeper WHERE user_id = $1 ORDER BY date DESC`,
@@ -188,6 +159,9 @@ export async function getUserEntry(req: Request, res: Response) {
     fail(res, 400, errors);
     return;
   }
+  // isUserId() above already proved this is a string, but TypeScript can't
+  // follow that through the errors list, so we tell it with "as string".
+  if (forbidOtherUsers(res, userId as string)) return;
 
   const result = await pool.query<EntryRow>(
     `SELECT ${COLUMNS} FROM sleeper WHERE user_id = $1 AND date = $2`,
