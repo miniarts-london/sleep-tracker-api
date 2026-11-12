@@ -138,7 +138,8 @@ export async function listUserEntries(req: Request, res: Response) {
     fail(res, 400, [fieldError('userId', RULES.userId)]);
     return;
   }
-  if (forbidOtherUsers(res, userId)) return;
+  //everyone can see the list of entries for any user, but only the user themselves can see the details of a specific entry. So we don't forbid other users here, but we do in getUserEntry() below.
+  // if (forbidOtherUsers(res, userId)) return;
 
   const result = await pool.query<EntryRow>(
     `SELECT ${COLUMNS} FROM sleeper WHERE user_id = $1 ORDER BY date DESC`,
